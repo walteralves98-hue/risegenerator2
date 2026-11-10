@@ -1,70 +1,909 @@
-const ids=['country','customCountry','emergency','scenario','title','onset','start','end','lead','areas','households','hhsize','people','modality','needs','activities','targeting','coordination','distribution','staffing','targetBudget','unit','rounds','delivery','personnel','monitoring','other','indirect','assumptions','c07','c08','feedback1','feedback2','methods','safeguarding','risks','partners'];
-const $=id=>document.getElementById(id), v=id=>$(id).value, n=id=>Number(v(id))||0, country=()=>v('country')==='Other / custom'?(v('customCountry')||'Country TBD'):v('country'), money=x=>'$'+Math.round(x).toLocaleString('en-US');
-const defaults={Honduras:{cash:{hh:225,size:5,unit:80,desc:'Honduras NEMP Scenario 1: multipurpose cash; historical reference 225 households, USD 80 transfer.'}},Mexico:{cash:{hh:180,size:4,unit:102,desc:'Mexico NEMP Scenario 1: one-time cash; historical reference 180 households, approx. USD 102 per household.'}},Ecuador:{cash:{hh:185,size:4,unit:99.43,desc:'Ecuador NEMP Scenario 1: cash/electronic cards; historical reference 185 transfers, USD 99.43 card value.'}}};
-const templates=['RISE_Proposal_Template.docx','RISE_Budget_Template.xlsx','RISE_LogFrame_ITT_Template.xlsx','RISE_ME_Plan_Template.docx','RISE_Activation_Checklist.docx','NEMP_Ecuador.xlsx','ADRA Honduras_ 2024 NEMP_final (english).pdf','ADRA Mexico_NEMP_2024_final (english) (1).pdf'];
-function tab(id){document.querySelectorAll('.section').forEach(e=>e.classList.toggle('active',e.id===id));document.querySelectorAll('[data-tab]').forEach(e=>e.classList.toggle('active',e.dataset.tab===id));if(id==='review')renderReview();window.scrollTo({top:0,behavior:'smooth'})}document.querySelectorAll('[data-tab]').forEach(e=>e.onclick=()=>tab(e.dataset.tab));
-function setCountry(){const d=defaults[country()]?.[v('scenario')];if(d){$('households').value=d.hh;$('hhsize').value=d.size;$('people').value=d.hh*d.size;$('unit').value=d.unit;$('nempNote').textContent=d.desc+' Historical NEMP figures must be checked against current assessments, market prices and funding.'}else $('nempNote').textContent='This country/scenario combination has no verified extracted reference baseline in this version. Enter actual values and consult the attached NEMP.';update()}
-$('country').addEventListener('change',setCountry);$('scenario').addEventListener('change',setCountry);$('households').addEventListener('input',()=>{$('people').value=n('households')*n('hhsize');update()});$('hhsize').addEventListener('input',()=>{$('people').value=n('households')*n('hhsize');update()});
-function budget(){const transfers=n('households')*n('unit')*n('rounds');const direct=transfers+n('delivery')+n('personnel')+n('monitoring')+n('other');const indirect=direct*n('indirect')/100;return {transfers,direct,indirect,total:direct+indirect,gap:n('targetBudget')-direct-indirect}}
-function issues(){const x=[];for(const [id,label] of [['title','Response title'],['onset','Disaster onset date'],['start','Start date'],['end','End date'],['areas','Target areas'],['needs','Verified needs and source dates'],['coordination','DHR and humanitarian coordination'],['distribution','Distribution plan'],['staffing','Staffing plan'],['assumptions','Budget justification'],['methods','Monitoring methodology'],['safeguarding','Safeguarding pathway'],['risks','Diversion and security risk assessment']])if(!v(id).trim())x.push(label+' missing');if(n('people')<=0)x.push('Unique beneficiary target required');if(v('feedback1')===v('feedback2'))x.push('Choose two different feedback channels');if(n('indirect')>15)x.push('Indirect rate exceeds 15%; verify applicable agreement and MTDC');if(n('households')<=0)x.push('Household target must be positive');if(v('start')&&v('end')&&v('end')<v('start'))x.push('End date precedes start date');if(budget().gap<0)x.push('Estimated costs exceed target funding');if(v('modality').toLowerCase().includes('cash')&&budget().transfers/(budget().transfers+n('delivery'))<.65)x.push('Cash transfer-to-total ratio below 65%: justify or revise (check applicable DHR definition)');return x}
-function update(){const b=budget();$('snapCountry').textContent='ADRA '+country();$('snapPeople').textContent=n('people').toLocaleString();$('snapTarget').textContent=money(n('targetBudget'));$('snapTotal').textContent=money(b.total);$('snapGap').textContent=(b.gap<0?'-':'')+money(Math.abs(b.gap));const count=issues().length;$('bar').style.width=Math.max(0,100-count*6)+'%';$('readiness').textContent=count+' review items remain';if($('review').classList.contains('active'))renderReview()}
-ids.forEach(id=>$(id).addEventListener('input',update));function renderReview(){const x=issues();$('issues').innerHTML=x.length?'<div class="note"><b>'+x.length+' items require review</b><ul>'+x.map(s=>'<li>'+escapeHTML(s)+'</li>').join('')+'</ul></div>':'<div class="note">All basic form checks passed. Technical, finance, compliance and donor approval are still required.</div>'}function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-$('templateLinks').innerHTML=templates.map(t=>'<a class="download" style="display:block;color:#087a87" href="templates/'+encodeURIComponent(t)+'" download>'+escapeHTML(t)+'</a>').join('');
-function saveDraft(){const blob=new Blob([JSON.stringify(Object.fromEntries(ids.map(i=>[i,v(i)])),null,2)],{type:'application/json'});download(blob,'RISE_activation_draft.json')}
-async function loadDraft(input){const f=input.files[0];if(!f)return;try{const d=JSON.parse(await f.text());ids.forEach(i=>{if(d[i]!==undefined)$(i).value=d[i]});update();$('status').textContent='Draft loaded successfully.'}catch(e){alert('Could not load JSON draft: '+e.message)}}
-function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000)}
-const title=()=>v('title')||country()+' '+v('emergency')+' Emergency Activation';
-function paragraph(s){return new docx.Paragraph({text:String(s||'[TO BE COMPLETED / VERIFIED]'),spacing:{after:150},breakLine:false})}
-function heading(s){return new docx.Paragraph({text:s,heading:docx.HeadingLevel.HEADING_2,spacing:{before:260,after:130}})}
-function table(headers,rows){return new docx.Table({width:{size:100,type:docx.WidthType.PERCENTAGE},rows:[new docx.TableRow({children:headers.map(h=>new docx.TableCell({children:[paragraph(h)],shading:{fill:'DCE9EF'}}))}),...rows.map(row=>new docx.TableRow({children:row.map(x=>new docx.TableCell({children:[paragraph(String(x))]}))}))]})}
-async function word(name,sections){const children=[new docx.Paragraph({text:'ADRA INTERNATIONAL  |  RISE PILLAR 1',heading:docx.HeadingLevel.TITLE}),new docx.Paragraph({text:name,heading:docx.HeadingLevel.HEADING_1}),paragraph('Country: '+country()+'  |  Emergency: '+v('emergency')+'  |  Draft for technical and finance review'),...sections.flatMap(([h,content])=>[heading(h),...(Array.isArray(content)?content:[paragraph(content)])])];const doc=new docx.Document({sections:[{properties:{},children}],styles:{default:{document:{run:{font:'Aptos',size:21}}}}});return await docx.Packer.toBlob(doc)}
-function sectionsProposal(){const b=budget();return [['1. Project Summary',[table(['Field','Value'],[['Partner','ADRA '+country()],['Country and target areas',country()+'; '+v('areas')],['Emergency',v('emergency')],['Sector and modality',v('scenario')+'; '+v('modality')],['Total unique beneficiaries (C00)',n('people')],['Requested amount / estimated budget',money(b.total)],['Dates',v('start')+' to '+v('end')]]),paragraph('Draft response: '+title())]],['2. Sub-Awards',v('partners')||'None identified. Confirm partner classification, screening, vetting and approval before contracting.'],['3. Description of Need',v('needs')],['4. Host Government and HA Community Coordination',v('coordination')],['5. Proposed Response Activities',[paragraph('Objective: Save lives and reduce suffering among disaster-affected people in '+v('areas')+'.'),paragraph('Activities:\n'+v('activities')),paragraph('Targeting: '+v('targeting')),paragraph('Indicators: C00 (direct unique beneficiaries): '+n('people')+'; C07 target: '+n('c07')+'%; C08 target: '+n('c08')+'%. Other sector indicators to be selected and verified.'),table(['Sector / modality','Households','Individuals'],[[v('modality'),n('households'),n('people')]])]],['6. Implementation Timeline',`Disaster onset: ${v('onset')}; planned implementation: ${v('start')} to ${v('end')}. Detailed workplan and milestones to be confirmed.`],['7. Budget',[paragraph('Estimated direct costs: '+money(b.direct)+'; estimated indirect costs: '+money(b.indirect)+'; estimated total: '+money(b.total)+'.'),paragraph('Assumptions: '+v('assumptions')),paragraph('Detailed official RISE budget workbook requires finance completion and review.')]],['8. Implementation Plan & Staffing',[paragraph(v('staffing')),paragraph('Distribution: '+v('distribution'))]],['9. International Travel','[Confirm whether international travel is planned and whether it is pre-approved.]'],['10. Risk Assessment and Management',v('risks')],['11. Sanctioned Entity / Diversion Risk',[paragraph(v('risks')),paragraph('Document screening of all partners, vendors and contractors, assessed risk level and mitigation; report suspected diversion through RISE channels as required.')]],['12. Accountability to Affected Populations and Safeguarding',`Feedback: ${v('feedback1')} and ${v('feedback2')}. Acknowledge complaints within 3 working days and resolve non-sensitive cases within 30 calendar days. Safeguarding: ${v('safeguarding')}. Sensitive complaints follow confidential safeguarding procedures.`]]}
-function sectionsME(){return [['Project Information',`Project: ${title()} | Partner: ADRA ${country()} | Country: ${country()} | Dates: ${v('start')}–${v('end')} | Modality: ${v('modality')}`],['Plan Summary',`Response to ${v('emergency')} affecting ${v('areas')}. Monitoring approach: ${v('methods')}. M&E budget planning amount: ${money(n('monitoring'))}.`],['1. Participant Identification, Registration and Tracking',`Targeting: ${v('targeting')}. Unique individuals (C00): ${n('people')}. De-duplicate participant records across interventions and disaggregate by sex, age and disability.`],['2. Baseline',v('methods')||'Define baseline timing, sample frame, methods and indicators.'],['3. Routine Monitoring',`Track activity outputs and beneficiary reach. ${v('methods')}`],['4. On Site Monitoring',`Monitor delivery at: ${v('distribution')}`],['5. Post-Distribution Monitoring',`Conduct PDM on timeliness, utilization, satisfaction, protection risks and feedback. ${v('methods')}`],['6. Endline','Define endline schedule, sample frame and methods before implementation.'],['7. Qualitative Data Collection','Define key informant interviews, focus groups and informed-consent procedures as appropriate.'],['8. After Action Review','Conduct after-action review following a major distribution and record lessons learned.'],['9. Real Time Evaluation','Determine whether a real-time evaluation is required and identify lead.'],['10. Accountability Mechanisms and Response',`Channels: ${v('feedback1')}; ${v('feedback2')}. Acknowledge within 3 working days and resolve non-sensitive cases within 30 calendar days. Confidential safeguarding referral: ${v('safeguarding')}.`]]}
-function worksheet(wb,name,headers,rows){const s=wb.addWorksheet(name);s.addRow(headers);for(const r of rows)s.addRow(r);s.getRow(1).font={bold:true,color:{argb:'FFFFFFFF'}};s.getRow(1).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF153E52'}};s.views=[{state:'frozen',ySplit:1}];s.columns=headers.map((_,i)=>({width:i===0?32:25}));return s}
-async function buildBudget(){const wb=new ExcelJS.Workbook();const b=budget();worksheet(wb,'Activation Inputs',['Parameter','Value','Notes'],[['Country',country(),'RISE activation'],['Emergency',v('emergency'),'Current event'],['Response title',title(),'Draft'],['Households',n('households'),'User estimate'],['Average household size',n('hhsize'),'User estimate'],['Unique individuals (C00)',n('people'),'De-duplicated'],['Target funding USD',n('targetBudget'),'Funding not confirmed'],['Transfer / kit USD',n('unit'),'Verify local market'],['Rounds',n('rounds'),''],['Indirect rate',n('indirect')/100,'Simplified estimated MTDC; finance must validate']]);const s=worksheet(wb,'Planning Budget',['Cost category','Quantity','Unit cost USD','Total USD','Notes'],[['Assistance transfer / kits',n('households')*n('rounds'),n('unit'),null,''],['Delivery',1,n('delivery'),null,''],['Personnel',1,n('personnel'),null,''],['Monitoring AAP safeguarding',1,n('monitoring'),null,''],['Other direct costs',1,n('other'),null,''],['Total direct costs',null,null,null,''],['Estimated indirect',null,null,null,'Simplified basis; confirm MTDC exclusions'],['Estimated total',null,null,null,''],['Funding target',null,null,n('targetBudget'),''],['Gap (positive = headroom)',null,null,null,'']]);for(let r=2;r<=6;r++)s.getCell('D'+r).value={formula:`B${r}*C${r}`};s.getCell('D7').value={formula:'SUM(D2:D6)'};s.getCell('D8').value={formula:`D7*${n('indirect')/100}`};s.getCell('D9').value={formula:'SUM(D7:D8)'};s.getCell('D11').value={formula:'D10-D9'};s.getColumn(4).numFmt='"$"#,##0.00;[Red]("$"#,##0.00)';worksheet(wb,'Budget Assumptions',['Assumptions','Detail'],[['Cost justification',v('assumptions')],['Important','This workbook is a planning annex, not the official RISE detailed budget. Complete and review the supplied original template.'],['MTDC','Actual exclusions and any negotiated rate must be confirmed.']]);return wb.xlsx.writeBuffer()}
-async function buildITT(){const wb=new ExcelJS.Workbook();worksheet(wb,'Indicators',['Code','Indicator','Target','Unit','Data source / verification','Notes'],[['C00','Number of direct project beneficiaries',n('people'),'Unique individuals','Registration / de-duplicated distribution records','Required'],['C07','Percent of affected people reporting they feel heard and can influence decisions',n('c07')/100,'Percent','Community surveys / PDM','Required; verify indicator definition'],['C08','Percent of complaints and feedback acknowledged, actioned and resolved within prescribed timeframes',n('c08')/100,'Percent','Feedback / CRM log','Required; sensitive cases handled separately']]);const s=wb.getWorksheet('Indicators');s.getCell('C3').numFmt='0%';s.getCell('C4').numFmt='0%';worksheet(wb,'Project Information',['Field','Value'],[['Project',title()],['Partner','ADRA '+country()],['Country',country()],['Start',v('start')],['End',v('end')],['Status','Draft: verify full RISE indicator menu and original ITT']]);return wb.xlsx.writeBuffer()}
-async function buildChecklist(){const wb=new ExcelJS.Workbook();worksheet(wb,'Activation Checklist',['Phase','Requirement','Status','Responsible','Due / timing'],[['Pre-submission','Consult DHR field staff and GOR','Pending','CI / Partner','Before submission'],['Pre-submission','Rapid needs assessment','Pending','Partner / MEAL','72 hours to 14 days after shock'],['Pre-submission','Coordination and technical standards review','Pending','Partner / CI','Before submission'],['Submission','RISE rapid activation proposal with C00, C07, C08 and risk sections','Draft','Partner / CI','With proposal'],['Submission','RISE detailed budget and narrative','Draft','Finance / CI','With proposal'],['Submission','Distribution plan','Draft','Partner','With proposal'],['After approval','Subaward or modification','Pending','CI','After DHR approval'],['Before implementation','ITT on RISE template','Draft','MEAL','Before implementation'],['Before implementation','M&E Plan Brief','Draft','MEAL','Before implementation'],['Before first spending','Financial controls and approvals','Pending','Finance','Before first spending'],['Before distribution','Two feedback channels, PSEA, registration','Pending','Partner / MEAL','Before first distribution'],['Before implementation','Security policy','Pending','Compliance','Before implementation']]);return wb.xlsx.writeBuffer()}
-async function exportAll(){await window.RISE_librariesReady;if(!window.JSZip||!window.docx||!window.ExcelJS){const missing=[!window.JSZip?'ZIP generator':null,!window.docx?'Word generator':null,!window.ExcelJS?'Excel generator':null].filter(Boolean);const msg='Cannot generate package: '+missing.join(', ')+' failed to load. This deployment blocks or cannot reach external document libraries. Try another network or allow cdn.jsdelivr.net and unpkg.com. If the problem persists, send the browser Console errors to your site administrator.';$('status').textContent=msg;alert(msg);return}const btn=$('generate');btn.disabled=true;$('status').textContent='Building editable documents and copying donor templates…';try{const zip=new JSZip();zip.file('01_RISE_Activation_Proposal_DRAFT.docx',await word('Pillar 1 Emergency Response Activation Proposal',sectionsProposal()));zip.file('02_RISE_ME_Plan_Brief_DRAFT.docx',await word('Monitoring and Evaluation Plan Brief',sectionsME()));zip.file('03_RISE_Budget_Planning_DRAFT.xlsx',await buildBudget());zip.file('04_RISE_Indicator_Tracking_DRAFT.xlsx',await buildITT());zip.file('05_RISE_Activation_Checklist_DRAFT.xlsx',await buildChecklist());if(importedNEMP){zip.file('07_Uploaded_NEMP_Extract.txt',importedNEMP.text);zip.file('08_NEMP_Source_Metadata.json',JSON.stringify({filename:importedNEMP.name,country:$('detectedCountry').value,intervention:$('detectedIntervention').value,reviewedExcerpt:$('sourceExcerpt').value},null,2));}zip.file('06_Activation_Inputs.json',JSON.stringify(Object.fromEntries(ids.map(i=>[i,v(i)])),null,2));zip.file('READ_ME_FIRST.txt','ADRA RISE activation draft package. The generated documents are editable planning drafts, not donor-approved submissions. The original RISE templates are in /Original_Templates. Populate the original detailed budget and ITT as required, verify current event facts, check technical standards and obtain CI/DHR approvals.\n');for(const t of templates){try{const r=await fetch('templates/'+encodeURIComponent(t));if(r.ok)zip.file('Original_Templates/'+t,await r.arrayBuffer())}catch(e){console.warn('Template unavailable',t)}}const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:5}});download(blob,'ADRA_RISE_'+country().replace(/\W/g,'_')+'_Activation_Package.zip');$('status').textContent='Package generated. Review every draft before submitting to CI/DHR.'}catch(e){console.error(e);$('status').textContent='Generation failed: '+e.message}finally{btn.disabled=false}}
-setCountry();
 
+/* ADRA RISE Activation Studio
+   Self-contained DOCX/XLSX generation using local JSZip.
+   PDF import requires locally installed PDF.js.
+*/
 
-// Universal NEMP import: no country-specific template is required.
-let importedNEMP=null;
-function cleanNEMP(t){return String(t||'').replace(/\u0000/g,' ').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim()}
-async function readNEMP(input){
- const f=input.files&&input.files[0];if(!f)return;
- const status=$('uploadStatus');status.textContent='Reading '+f.name+'…';$('nempExtract').style.display='none';
- try{
-  if(f.size>25*1024*1024)throw Error('Maximum file size is 25 MB.');
-  const ext=f.name.split('.').pop().toLowerCase();let text='';const buf=await f.arrayBuffer();
-  if(ext==='pdf'){
-   await window.RISE_librariesReady;if(!window.pdfjsLib)throw Error('PDF reader unavailable: external library was blocked.');
-   pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-   const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
-   for(let i=1;i<=pdf.numPages;i++){const page=await pdf.getPage(i);const content=await page.getTextContent();text+='\n[Page '+i+']\n'+content.items.map(x=>x.str).join(' ')+'\n';}
-  }else if(ext==='docx'){
-   await window.RISE_librariesReady;if(!window.mammoth)throw Error('Word reader unavailable: external library was blocked.');text=(await mammoth.extractRawText({arrayBuffer:buf})).value;
-  }else if(ext==='xlsx'){
-   await window.RISE_librariesReady;if(!window.ExcelJS)throw Error('Excel reader unavailable: external library was blocked.');const wb=new ExcelJS.Workbook();await wb.xlsx.load(buf);
-   wb.eachSheet(ws=>{text+='\n[Sheet: '+ws.name+']\n';ws.eachRow({includeEmpty:false},row=>{text+=row.values.slice(1).map(x=>typeof x==='object'?(x.text||x.result||JSON.stringify(x)):String(x??'')).join(' | ')+'\n';});});
-  }else throw Error('Upload PDF, DOCX, or XLSX.');
-  text=cleanNEMP(text);if(text.length<120)throw Error('No usable text found. Scanned PDFs need OCR before uploading.');
-  const filename=f.name.replace(/\.[^.]+$/,'');
-  const officeMatch=text.match(/(?:National Emergency Management Plan\s*[:\-]?\s*ADRA|ADRA\s+Country Office\s*[:\-]?|ADRA\s+)([A-Z][A-Za-zÀ-ÿ .'-]{2,35})/i);
-  let office=(officeMatch?.[1]||filename.replace(/^(ADRA|NEMP)[ _-]*/i,'').replace(/[_-].*$/,'')).trim();office=office.replace(/\b(?:final|english|202[0-9]|national emergency).*$/i,'').trim();
-  const scenario=text.search(/(?:Intervention Scenario\s*#?\s*1|Scenario\s*1\s*[:\-]|Response Scenario)/i);
-  const excerpt=scenario>=0?text.slice(scenario,scenario+2800):text.slice(0,2800);
-  importedNEMP={name:f.name,country:office,text,excerpt,uploadedAt:new Date().toISOString()};
-  $('detectedCountry').value=office;$('detectedIntervention').value=excerpt.slice(0,1100);$('sourceExcerpt').value=excerpt;
-  $('nempExtract').style.display='block';status.textContent='Extracted '+text.length.toLocaleString()+' characters from '+f.name+'. Review before applying.';
- }catch(err){console.error(err);status.textContent='Import failed: '+err.message;}
+const ids = [
+  'country','customCountry','emergency','scenario','title',
+  'onset','start','end','lead','areas','households','hhsize',
+  'people','modality','needs','activities','targeting',
+  'coordination','distribution','staffing','targetBudget',
+  'unit','rounds','delivery','personnel','monitoring','other',
+  'indirect','assumptions','c07','c08','feedback1','feedback2',
+  'methods','safeguarding','risks','partners'
+];
+
+const $ = id => document.getElementById(id);
+const v = id => $(id)?.value || '';
+const n = id => Number(v(id)) || 0;
+const money = x => '$' + Number(x || 0).toLocaleString(
+  'en-US', {maximumFractionDigits: 2}
+);
+
+const country = () =>
+  v('country') === 'Other / custom'
+    ? (v('customCountry') || 'Country TBD')
+    : v('country');
+
+const projectTitle = () =>
+  v('title') || country() + ' Emergency Activation';
+
+const templates = [
+  'RISE_Proposal_Template.docx',
+  'RISE_Budget_Template.xlsx',
+  'RISE_LogFrame_ITT_Template.xlsx',
+  'RISE_ME_Plan_Template.docx',
+  'RISE_Activation_Checklist.docx'
+];
+
+let importedNEMP = null;
+
+function escapeHTML(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;',
+    '"':'&quot;', "'":'&#39;'
+  })[c]);
 }
-function applyNEMP(){if(!importedNEMP)return;
- const office=$('detectedCountry').value.trim();$('country').value='Other / custom';$('customCountry').value=office;
- // Preserve manually edited response fields; never assume historical NEMP targets are current needs.
- const description=$('detectedIntervention').value.trim();
- $('nempNote').textContent='Uploaded source: '+importedNEMP.name+'. Review and adapt its intervention to the current emergency; historical figures are not current assessment data.';
- if(description && !$('assumptions').value.trim())$('assumptions').value='NEMP planning reference (verify current prices and scale): '+description.slice(0,800);
- if(typeof update==='function')update();else if(typeof refresh==='function')refresh();
- $('uploadStatus').textContent='NEMP linked to activation. Complete current event evidence, targets and costs before export.';
+
+function xml(s) {
+  return String(s ?? '').replace(/[<>&"']/g, c => ({
+    '<':'&lt;', '>':'&gt;', '&':'&amp;',
+    '"':'&quot;', "'":'&apos;'
+  })[c]);
 }
+
+function tab(id) {
+  document.querySelectorAll('.section').forEach(el =>
+    el.classList.toggle('active', el.id === id)
+  );
+  document.querySelectorAll('[data-tab]').forEach(el =>
+    el.classList.toggle('active', el.dataset.tab === id)
+  );
+  if (id === 'review') renderReview();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+document.querySelectorAll('[data-tab]').forEach(el => {
+  el.onclick = () => tab(el.dataset.tab);
+});
+
+function budget() {
+  const transfers = n('households') * n('unit') * n('rounds');
+  const direct = transfers + n('delivery') + n('personnel')
+    + n('monitoring') + n('other');
+  const indirect = direct * n('indirect') / 100;
+  return {
+    transfers, direct, indirect,
+    total: direct + indirect,
+    gap: n('targetBudget') - direct - indirect
+  };
+}
+
+function issues() {
+  const result = [];
+  const required = [
+    ['title','Response title'],
+    ['onset','Disaster onset date'],
+    ['start','Start date'],
+    ['end','End date'],
+    ['areas','Target areas'],
+    ['needs','Current needs assessment'],
+    ['coordination','Coordination arrangements'],
+    ['distribution','Distribution plan'],
+    ['staffing','Staffing plan'],
+    ['assumptions','Budget justification'],
+    ['methods','Monitoring methodology'],
+    ['safeguarding','Safeguarding procedures'],
+    ['risks','Risk assessment']
+  ];
+
+  for (const [id, label] of required) {
+    if (!v(id).trim()) result.push(label + ' missing');
+  }
+
+  if (n('households') <= 0)
+    result.push('Household target must be positive');
+
+  if (n('people') <= 0)
+    result.push('Unique beneficiary target required');
+
+  if (v('start') && v('end') && v('end') < v('start'))
+    result.push('End date precedes start date');
+
+  if (v('feedback1') === v('feedback2'))
+    result.push('Select two different feedback channels');
+
+  if (budget().gap < 0)
+    result.push('Estimated costs exceed target funding');
+
+  if (!importedNEMP)
+    result.push('No uploaded NEMP is linked to this activation');
+
+  return result;
+}
+
+function update() {
+  const b = budget();
+
+  $('snapCountry').textContent = 'ADRA ' + country();
+  $('snapPeople').textContent = n('people').toLocaleString();
+  $('snapTarget').textContent = money(n('targetBudget'));
+  $('snapTotal').textContent = money(b.total);
+  $('snapGap').textContent =
+    (b.gap < 0 ? '-' : '') + money(Math.abs(b.gap));
+
+  const count = issues().length;
+  $('bar').style.width = Math.max(0, 100 - count * 6) + '%';
+  $('readiness').textContent = count + ' review items remain';
+
+  if ($('review').classList.contains('active')) renderReview();
+}
+
+function renderReview() {
+  const list = issues();
+
+  $('issues').innerHTML = list.length
+    ? '<div class="note"><b>' + list.length +
+      ' items require review</b><ul>' +
+      list.map(s => '<li>' + escapeHTML(s) + '</li>').join('') +
+      '</ul></div>'
+    : '<div class="note">Basic checks passed. Technical, finance, ' +
+      'compliance and donor approval are still required.</div>';
+}
+
+ids.forEach(id => {
+  $(id)?.addEventListener('input', update);
+  $(id)?.addEventListener('change', update);
+});
+
+['households','hhsize'].forEach(id => {
+  $(id).addEventListener('input', () => {
+    $('people').value = n('households') * n('hhsize');
+    update();
+  });
+});
+
+$('templateLinks').innerHTML = templates.map(t =>
+  '<a style="display:block;color:#087a87;margin:8px 0" href="templates/' +
+  encodeURIComponent(t) + '" download>' + escapeHTML(t) + '</a>'
+).join('');
+
+function download(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 3000);
+}
+
+function saveDraft() {
+  const data = Object.fromEntries(ids.map(id => [id, v(id)]));
+  download(
+    new Blob([JSON.stringify(data, null, 2)], {
+      type:'application/json'
+    }),
+    'RISE_activation_draft.json'
+  );
+}
+
+async function loadDraft(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    const data = JSON.parse(await file.text());
+    ids.forEach(id => {
+      if (data[id] !== undefined) $(id).value = data[id];
+    });
+    update();
+    $('status').textContent = 'Draft loaded successfully.';
+  } catch (e) {
+    alert('Could not load draft: ' + e.message);
+  }
+}
+
+/* ---------- UNIVERSAL NEMP IMPORT ---------- */
+
+function cleanText(text) {
+  return String(text || '')
+    .replace(/\u0000/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function readExcelNEMP(buffer) {
+  if (!window.JSZip)
+    throw Error('Local ZIP library is missing.');
+
+  const zip = await JSZip.loadAsync(buffer);
+  const workbookFile = zip.file('xl/workbook.xml');
+
+  if (!workbookFile)
+    throw Error('This is not a valid Excel workbook.');
+
+  const parser = new DOMParser();
+
+  const shared = [];
+  const sharedFile = zip.file('xl/sharedStrings.xml');
+
+  if (sharedFile) {
+    const doc = parser.parseFromString(
+      await sharedFile.async('string'), 'application/xml'
+    );
+    for (const si of doc.getElementsByTagName('si')) {
+      shared.push(
+        Array.from(si.getElementsByTagName('t'))
+          .map(t => t.textContent).join('')
+      );
+    }
+  }
+
+  let result = '';
+
+  const sheetPaths = Object.keys(zip.files)
+    .filter(path => /^xl\/worksheets\/sheet\d+\.xml$/.test(path))
+    .sort((a, b) => {
+      const x = Number(a.match(/sheet(\d+)/)[1]);
+      const y = Number(b.match(/sheet(\d+)/)[1]);
+      return x - y;
+    });
+
+  for (const path of sheetPaths) {
+    const sheetXML = await zip.file(path).async('string');
+    const doc = parser.parseFromString(sheetXML, 'application/xml');
+
+    result += '\n[Worksheet: ' + path + ']\n';
+
+    for (const row of doc.getElementsByTagName('row')) {
+      const values = [];
+
+      for (const cell of row.getElementsByTagName('c')) {
+        const type = cell.getAttribute('t');
+        let value = '';
+
+        const vNode = cell.getElementsByTagName('v')[0];
+        const inline = cell.getElementsByTagName('is')[0];
+
+        if (type === 's' && vNode) {
+          value = shared[Number(vNode.textContent)] || '';
+        } else if (inline) {
+          value = Array.from(inline.getElementsByTagName('t'))
+            .map(t => t.textContent).join('');
+        } else if (vNode) {
+          value = vNode.textContent;
+        }
+
+        if (value) values.push(value);
+      }
+
+      if (values.length) result += values.join(' | ') + '\n';
+    }
+  }
+
+  return result;
+}
+
+async function readPDFNEMP(buffer) {
+  if (!window.pdfjsLib) {
+    throw Error(
+      'PDF reader is not installed locally. Add pdf.min.js and ' +
+      'pdf.worker.min.js to the vendor folder before importing PDFs.'
+    );
+  }
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    './vendor/pdf.worker.min.js';
+
+  const pdf = await pdfjsLib.getDocument({
+    data: new Uint8Array(buffer)
+  }).promise;
+
+  let result = '';
+
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+    const page = await pdf.getPage(pageNo);
+    const content = await page.getTextContent();
+
+    result += '\n[Page ' + pageNo + ']\n' +
+      content.items.map(item => item.str || '').join(' ') + '\n';
+  }
+
+  return result;
+}
+
+async function readNEMP(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  $('uploadStatus').textContent = 'Reading ' + file.name + '...';
+  $('nempExtract').style.display = 'none';
+
+  try {
+    if (file.size > 25 * 1024 * 1024)
+      throw Error('Maximum NEMP size is 25 MB.');
+
+    const extension = file.name.split('.').pop().toLowerCase();
+    const buffer = await file.arrayBuffer();
+
+    let text;
+
+    if (extension === 'xlsx') {
+      text = await readExcelNEMP(buffer);
+    } else if (extension === 'pdf') {
+      text = await readPDFNEMP(buffer);
+    } else {
+      throw Error('Upload a PDF or Excel (.xlsx) NEMP.');
+    }
+
+    text = cleanText(text);
+
+    if (text.length < 120)
+      throw Error(
+        'Insufficient extractable text. Scanned PDFs require OCR.'
+      );
+
+    const filename = file.name.replace(/\.[^.]+$/, '');
+
+    const countryGuess = filename
+      .replace(/^ADRA[\s_-]*/i, '')
+      .replace(/^NEMP[\s_-]*/i, '')
+      .replace(/[\s_-]*(NEMP|final|english|202\d).*$/i, '')
+      .replace(/[_-]/g, ' ')
+      .trim();
+
+    const match = text.search(
+      /(?:intervention scenario|scenario\s*1|response scenario)/i
+    );
+
+    const excerpt = match >= 0
+      ? text.slice(match, match + 3500)
+      : text.slice(0, 3500);
+
+    importedNEMP = {
+      name: file.name,
+      text,
+      excerpt,
+      country: countryGuess,
+      uploadedAt: new Date().toISOString()
+    };
+
+    $('detectedCountry').value = countryGuess;
+    $('detectedIntervention').value = excerpt.slice(0, 1100);
+    $('sourceExcerpt').value = excerpt;
+    $('nempExtract').style.display = 'block';
+
+    $('uploadStatus').textContent =
+      'Extracted ' + text.length.toLocaleString() +
+      ' characters. Review the information before applying.';
+
+    update();
+  } catch (error) {
+    console.error(error);
+    $('uploadStatus').textContent = 'Import failed: ' + error.message;
+  }
+}
+
+function applyNEMP() {
+  if (!importedNEMP) return;
+
+  $('country').value = 'Other / custom';
+  $('customCountry').value = $('detectedCountry').value.trim();
+
+  const description = $('detectedIntervention').value.trim();
+
+  if (description && !v('assumptions').trim()) {
+    $('assumptions').value =
+      'NEMP planning reference (verify current prices, targets ' +
+      'and assumptions): ' + description.slice(0, 800);
+  }
+
+  $('nempNote').textContent =
+    'Source: ' + importedNEMP.name +
+    '. Historical NEMP values require verification against ' +
+    'current needs assessments and market prices.';
+
+  $('uploadStatus').textContent =
+    'NEMP linked to activation. Complete and verify response inputs.';
+
+  update();
+}
+
+/* ---------- WORD DOCUMENT GENERATOR ---------- */
+
+function wordParagraph(text, style = '') {
+  const lines = String(text ?? '').split('\n');
+
+  return lines.map(line =>
+    '<w:p>' +
+    (style ? '<w:pPr><w:pStyle w:val="' + style +
+      '"/></w:pPr>' : '') +
+    '<w:r><w:t xml:space="preserve">' +
+    xml(line || ' ') +
+    '</w:t></w:r></w:p>'
+  ).join('');
+}
+
+async function createWord(name, sections) {
+  const zip = new JSZip();
+
+  zip.file('[Content_Types].xml',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+    '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+    '</Types>'
+  );
+
+  zip.file('_rels/.rels',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+    '</Relationships>'
+  );
+
+  zip.file('word/_rels/document.xml.rels',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+    '</Relationships>'
+  );
+
+  zip.file('word/styles.xml',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">' +
+    '<w:name w:val="Normal"/><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos"/><w:sz w:val="21"/></w:rPr></w:style>' +
+    '<w:style w:type="paragraph" w:styleId="Heading1">' +
+    '<w:name w:val="heading 1"/><w:rPr><w:b/><w:color w:val="153E52"/><w:sz w:val="32"/></w:rPr></w:style>' +
+    '<w:style w:type="paragraph" w:styleId="Heading2">' +
+    '<w:name w:val="heading 2"/><w:rPr><w:b/><w:color w:val="087A87"/><w:sz w:val="26"/></w:rPr></w:style>' +
+    '</w:styles>'
+  );
+
+  let body =
+    wordParagraph('ADRA INTERNATIONAL | RISE PILLAR 1', 'Heading1') +
+    wordParagraph(name, 'Heading1') +
+    wordParagraph(
+      'Country: ' + country() +
+      ' | Emergency: ' + v('emergency') +
+      ' | Draft for technical and finance review'
+    );
+
+  for (const [heading, content] of sections) {
+    body += wordParagraph(heading, 'Heading2');
+    body += wordParagraph(content);
+  }
+
+  zip.file('word/document.xml',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:body>' + body +
+    '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>' +
+    '<w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080"/>' +
+    '</w:sectPr></w:body></w:document>'
+  );
+
+  return zip.generateAsync({type:'blob'});
+}
+
+/* ---------- EXCEL WORKBOOK GENERATOR ---------- */
+
+function columnName(index) {
+  let name = '';
+  while (index > 0) {
+    index--;
+    name = String.fromCharCode(65 + index % 26) + name;
+    index = Math.floor(index / 26);
+  }
+  return name;
+}
+
+function excelSheet(rows) {
+  const body = rows.map((row, ri) => {
+    const cells = row.map((value, ci) => {
+      const ref = columnName(ci + 1) + (ri + 1);
+
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return '<c r="' + ref + '"><v>' + value + '</v></c>';
+      }
+
+      return '<c r="' + ref + '" t="inlineStr"><is><t>' +
+        xml(value ?? '') + '</t></is></c>';
+    }).join('');
+
+    return '<row r="' + (ri + 1) + '">' + cells + '</row>';
+  }).join('');
+
+  return '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<sheetData>' + body + '</sheetData></worksheet>';
+}
+
+async function createExcel(sheets) {
+  const zip = new JSZip();
+  const names = Object.keys(sheets);
+
+  zip.file('[Content_Types].xml',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    names.map((_, i) =>
+      '<Override PartName="/xl/worksheets/sheet' + (i + 1) +
+      '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+    ).join('') + '</Types>'
+  );
+
+  zip.file('_rels/.rels',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+    '</Relationships>'
+  );
+
+  zip.file('xl/workbook.xml',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<sheets>' +
+    names.map((name, i) =>
+      '<sheet name="' + xml(name) + '" sheetId="' + (i + 1) +
+      '" r:id="rId' + (i + 1) + '"/>'
+    ).join('') + '</sheets></workbook>'
+  );
+
+  zip.file('xl/_rels/workbook.xml.rels',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    names.map((_, i) =>
+      '<Relationship Id="rId' + (i + 1) +
+      '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"' +
+      ' Target="worksheets/sheet' + (i + 1) + '.xml"/>'
+    ).join('') + '</Relationships>'
+  );
+
+  names.forEach((name, i) => {
+    zip.file(
+      'xl/worksheets/sheet' + (i + 1) + '.xml',
+      excelSheet(sheets[name])
+    );
+  });
+
+  return zip.generateAsync({type:'blob'});
+}
+
+/* ---------- PROPOSAL CONTENT ---------- */
+
+function proposalSections() {
+  const b = budget();
+
+  return [
+    ['1. Project Summary',
+      'Project: ' + projectTitle() +
+      '\nCountry: ' + country() +
+      '\nEmergency: ' + v('emergency') +
+      '\nTarget areas: ' + v('areas') +
+      '\nImplementation: ' + v('start') + ' to ' + v('end') +
+      '\nHouseholds: ' + n('households') +
+      '\nUnique beneficiaries (C00): ' + n('people') +
+      '\nModality: ' + v('modality') +
+      '\nEstimated budget: ' + money(b.total)
+    ],
+    ['2. Sub-Awards and Partners',
+      v('partners') || 'To be confirmed.'
+    ],
+    ['3. Description of Need',
+      v('needs') || 'Current needs assessment required.'
+    ],
+    ['4. Government and Humanitarian Coordination',
+      v('coordination')
+    ],
+    ['5. Proposed Response Activities',
+      'Objective: Save lives and reduce suffering among ' +
+      'disaster-affected people.\n\n' +
+      'Activities:\n' + v('activities') +
+      '\n\nTargeting:\n' + v('targeting') +
+      '\n\nC00: ' + n('people') +
+      '\nC07 target: ' + n('c07') + '%' +
+      '\nC08 target: ' + n('c08') + '%'
+    ],
+    ['6. Implementation Timeline',
+      'Disaster onset: ' + v('onset') +
+      '\nStart: ' + v('start') +
+      '\nEnd: ' + v('end')
+    ],
+    ['7. Budget',
+      'Assistance: ' + money(b.transfers) +
+      '\nDirect costs: ' + money(b.direct) +
+      '\nEstimated indirect: ' + money(b.indirect) +
+      '\nTotal: ' + money(b.total) +
+      '\n\nAssumptions:\n' + v('assumptions') +
+      '\n\nFinance must validate the official RISE budget.'
+    ],
+    ['8. Implementation and Staffing',
+      v('staffing') + '\n\nDistribution:\n' + v('distribution')
+    ],
+    ['9. International Travel',
+      'Confirm any planned international travel and approvals.'
+    ],
+    ['10. Risk Assessment and Management', v('risks')],
+    ['11. Sanctions and Diversion Risk',
+      'Verify partner and vendor screening, diversion ' +
+      'controls, mitigation and reporting requirements.\n' +
+      v('risks')
+    ],
+    ['12. Accountability and Safeguarding',
+      'Feedback channels: ' + v('feedback1') +
+      ' and ' + v('feedback2') +
+      '\nSafeguarding: ' + v('safeguarding')
+    ],
+    ['13. NEMP Source and Adaptation',
+      importedNEMP
+        ? 'Source NEMP: ' + importedNEMP.name +
+          '\nReviewed intervention:\n' +
+          v('detectedIntervention') +
+          '\nHistorical figures must be independently verified.'
+        : 'No source NEMP uploaded.'
+    ]
+  ];
+}
+
+function mealSections() {
+  return [
+    ['Project Information',
+      projectTitle() + '\nADRA ' + country() +
+      '\nDates: ' + v('start') + ' to ' + v('end')
+    ],
+    ['1. Participant Identification',
+      'C00 target: ' + n('people') +
+      '\nTargeting: ' + v('targeting')
+    ],
+    ['2. Baseline', v('methods')],
+    ['3. Routine Monitoring', v('methods')],
+    ['4. On-Site Monitoring', v('distribution')],
+    ['5. Post-Distribution Monitoring', v('methods')],
+    ['6. Endline', 'Define endline methodology and timing.'],
+    ['7. Qualitative Data Collection',
+      'Define interviews, focus groups and consent procedures.'
+    ],
+    ['8. After-Action Review',
+      'Document lessons learned following implementation.'
+    ],
+    ['9. Real-Time Evaluation',
+      'Determine whether a real-time evaluation is required.'
+    ],
+    ['10. Accountability and Feedback',
+      'Channels: ' + v('feedback1') + ', ' + v('feedback2') +
+      '\nSafeguarding: ' + v('safeguarding') +
+      '\nC07 target: ' + n('c07') + '%' +
+      '\nC08 target: ' + n('c08') + '%'
+    ]
+  ];
+}
+
+function budgetSheets() {
+  const b = budget();
+
+  return {
+    'Activation Inputs': [
+      ['Parameter','Value','Notes'],
+      ['Country',country(),''],
+      ['Project',projectTitle(),''],
+      ['Emergency',v('emergency'),''],
+      ['Households',n('households'),''],
+      ['Household size',n('hhsize'),''],
+      ['Unique individuals',n('people'),'C00'],
+      ['Target funding',n('targetBudget'),'USD'],
+      ['Unit assistance',n('unit'),'USD'],
+      ['Rounds',n('rounds'),''],
+      ['Indirect rate',n('indirect') / 100,'Planning only']
+    ],
+    'Planning Budget': [
+      ['Cost category','Quantity','Unit cost','Total USD'],
+      ['Assistance',n('households') * n('rounds'),
+        n('unit'),b.transfers],
+      ['Delivery',1,n('delivery'),n('delivery')],
+      ['Personnel',1,n('personnel'),n('personnel')],
+      ['Monitoring and AAP',1,n('monitoring'),n('monitoring')],
+      ['Other direct costs',1,n('other'),n('other')],
+      ['Total direct costs','','',b.direct],
+      ['Estimated indirect','','',b.indirect],
+      ['Estimated total','','',b.total],
+      ['Target funding','','',n('targetBudget')],
+      ['Funding gap','','',b.gap]
+    ],
+    'Assumptions': [
+      ['Item','Detail'],
+      ['Cost justification',v('assumptions')],
+      ['Source NEMP',importedNEMP?.name || 'Not uploaded'],
+      ['Finance note',
+        'Planning estimates only. Complete the official RISE budget.']
+    ]
+  };
+}
+
+function indicatorSheets() {
+  return {
+    'Indicators': [
+      ['Code','Indicator','Target','Unit','Data source'],
+      ['C00','Direct project beneficiaries',
+        n('people'),'Individuals','Registration records'],
+      ['C07','People reporting they feel heard',
+        n('c07') / 100,'Proportion','PDM / survey'],
+      ['C08','Feedback acknowledged, actioned and resolved',
+        n('c08') / 100,'Proportion','Feedback register']
+    ],
+    'Project': [
+      ['Field','Value'],
+      ['Project',projectTitle()],
+      ['Country',country()],
+      ['Start',v('start')],
+      ['End',v('end')]
+    ]
+  };
+}
+
+function checklistSheets() {
+  return {
+    'Activation Checklist': [
+      ['Phase','Requirement','Status'],
+      ['Pre-submission','Rapid needs assessment','Pending'],
+      ['Pre-submission','Government and DHR coordination','Pending'],
+      ['Submission','RISE proposal','Draft'],
+      ['Submission','Official detailed budget','Pending'],
+      ['Submission','Distribution plan','Draft'],
+      ['Before implementation','Indicator tracker','Draft'],
+      ['Before implementation','M&E Plan Brief','Draft'],
+      ['Before distribution','Feedback mechanisms','Pending'],
+      ['Before distribution','Safeguarding and PSEA','Pending'],
+      ['Before implementation','Security and diversion controls',
+        'Pending']
+    ]
+  };
+}
+
+/* ---------- EXPORT COMPLETE PACKAGE ---------- */
+
+async function exportAll() {
+  if (!window.JSZip) {
+    const message =
+      'Local ZIP library is missing. Verify that ' +
+      'vendor/jszip.min.js exists in GitHub.';
+    $('status').textContent = message;
+    alert(message);
+    return;
+  }
+
+  const button = $('generate');
+  button.disabled = true;
+  $('status').textContent = 'Generating proposal package...';
+
+  try {
+    const zip = new JSZip();
+
+    zip.file(
+      '01_RISE_Activation_Proposal_DRAFT.docx',
+      await createWord(
+        'Pillar 1 Emergency Response Activation Proposal',
+        proposalSections()
+      )
+    );
+
+    zip.file(
+      '02_RISE_ME_Plan_Brief_DRAFT.docx',
+      await createWord(
+        'Monitoring and Evaluation Plan Brief',
+        mealSections()
+      )
+    );
+
+    zip.file(
+      '03_RISE_Budget_Planning_DRAFT.xlsx',
+      await createExcel(budgetSheets())
+    );
+
+    zip.file(
+      '04_RISE_Indicator_Tracking_DRAFT.xlsx',
+      await createExcel(indicatorSheets())
+    );
+
+    zip.file(
+      '05_RISE_Activation_Checklist_DRAFT.xlsx',
+      await createExcel(checklistSheets())
+    );
+
+    zip.file(
+      '06_Activation_Inputs.json',
+      JSON.stringify(
+        Object.fromEntries(ids.map(id => [id, v(id)])),
+        null, 2
+      )
+    );
+
+    if (importedNEMP) {
+      zip.file(
+        '07_NEMP_Extracted_Text.txt',
+        importedNEMP.text
+      );
+
+      zip.file(
+        '08_NEMP_Source_Metadata.json',
+        JSON.stringify({
+          filename: importedNEMP.name,
+          uploadedAt: importedNEMP.uploadedAt,
+          country: v('detectedCountry'),
+          intervention: v('detectedIntervention')
+        }, null, 2)
+      );
+    }
+
+    zip.file(
+      'READ_ME_FIRST.txt',
+      'ADRA RISE Activation Studio\n\n' +
+      'This package contains editable planning drafts.\n' +
+      'These are not completed official donor templates.\n' +
+      'All needs, targets, costs, indicators and assumptions ' +
+      'require technical and finance review.\n' +
+      'Obtain applicable approvals before submission.\n'
+    );
+
+    for (const name of templates) {
+      try {
+        const response = await fetch(
+          './templates/' + encodeURIComponent(name)
+        );
+
+        if (response.ok) {
+          zip.file(
+            'Original_Templates/' + name,
+            await response.arrayBuffer()
+          );
+        }
+      } catch (error) {
+        console.warn('Template unavailable:', name, error);
+      }
+    }
+
+    const blob = await zip.generateAsync({
+      type:'blob',
+      compression:'DEFLATE',
+      compressionOptions:{level:5}
+    });
+
+    download(
+      blob,
+      'ADRA_RISE_' +
+      country().replace(/[^a-z0-9]+/gi, '_') +
+      '_Activation_Package.zip'
+    );
+
+    $('status').textContent =
+      'Proposal package generated. Review all documents ' +
+      'before submission.';
+  } catch (error) {
+    console.error(error);
+    $('status').textContent =
+      'Generation failed: ' + error.message;
+    alert('Generation failed: ' + error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/* ---------- INITIALIZATION ---------- */
+
+$('nempNote').textContent =
+  'Upload a PDF or Excel NEMP, review the extracted information, ' +
+  'and adapt the response using current emergency evidence.';
+
+update();
